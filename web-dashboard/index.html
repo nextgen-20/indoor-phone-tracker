@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Indoor Phone Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --bg: #0a0e13; --panel: #10161d; --border: #1e2830;
+    --text: #d7e0e8; --dim: #6b7c8c;
+    --accent: #4fd1c5; --accent-dim: #2a5a56;
+    --warn: #ffd93d; --danger: #ff6b6b; --good: #2ec466;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Space Grotesk', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+  .app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+  @media (max-width: 860px) { .app { grid-template-columns: 1fr; } }
+  .sidebar { background: var(--panel); border-right: 1px solid var(--border); padding: 22px 18px; display: flex; flex-direction: column; gap: 18px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  h1 { font-size: 17px; font-weight: 700; margin: 0; }
+  .sub { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; margin: -10px 0 0 0; }
+  .step { border-top: 1px solid var(--border); padding-top: 14px; }
+  .step-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .step-num { width: 16px; height: 16px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); font-size: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  p.hint { font-size: 12.5px; color: var(--dim); line-height: 1.5; margin: 0 0 8px 0; }
+  button { font-family: var(--sans); font-weight: 600; font-size: 13px; background: transparent; border: 1px solid var(--accent-dim); color: var(--accent); padding: 9px 14px; border-radius: 6px; cursor: pointer; width: 100%; transition: all 0.15s ease; }
+  button:hover { background: var(--accent-dim); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #06201d; border-color: var(--accent); }
+  button.primary:hover { background: #6be0d4; }
+  button.ghost { border-color: var(--border); color: var(--dim); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .file-btn { display: block; text-align: center; }
+  input[type="file"] { display: none; }
+  input[type="text"], input[type="number"], textarea {
+    width: 100%; background: #0d1319; border: 1px solid var(--border); color: var(--text);
+    font-family: var(--mono); font-size: 13px; padding: 9px 10px; border-radius: 6px; margin-top: 6px;
+  }
+  input:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  label { font-size: 12px; color: var(--dim); }
+  .status-line { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .status-line.good { color: var(--good); }
+  .status-line.bad { color: var(--danger); }
+  .fp-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+  .fp-row { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; background: #0d1319; border: 1px solid var(--border); border-radius: 5px; padding: 6px 10px; }
+  .fp-row .rm { background: none; border: none; width: auto; color: var(--danger); font-size: 14px; cursor: pointer; padding: 0; }
+  .empty-note { font-family: var(--mono); font-size: 11px; color: var(--dim); text-align: center; padding: 10px 0; }
+  .mode-toggle { display: flex; gap: 6px; }
+  .mode-toggle button { flex: 1; }
+  .mode-toggle button.active { background: var(--accent); color: #06201d; border-color: var(--accent); }
+  .stage { position: relative; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; }
+  .canvas-wrap { position: relative; box-shadow: 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,0.5); border-radius: 8px; overflow: hidden; background: #0d1319;
+    background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 24px 24px; }
+  canvas { display: block; }
+  canvas.mode-calibrate { cursor: crosshair; }
+  .placeholder { width: 680px; max-width: 82vw; height: 460px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: var(--dim); font-family: var(--mono); font-size: 13px; text-align: center; padding: 20px; }
+  .legend { position: absolute; bottom: 16px; left: 16px; background: rgba(10,14,19,0.85); backdrop-filter: blur(6px); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 10px; color: var(--dim); }
+  .legend-item { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .legend-item .sw { width: 9px; height: 9px; border-radius: 50%; }
+  .float-box { position: absolute; z-index: 20; background: #10161d; border: 1px solid var(--accent); border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; flex-direction: column; gap: 8px; min-width: 220px; }
+  .float-box.active { display: flex; }
+  .float-box .row { display: flex; gap: 6px; }
+  .float-box button { padding: 7px 10px; font-size: 12px; }
+  .coord-readout { position: absolute; top: 14px; left: 14px; background: rgba(10,14,19,0.85); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div>
+      <div class="brand"><span class="dot"></span><h1>Indoor Phone Tracker</h1></div>
+      <p class="sub">WiFi fingerprint positioning</p>
+    </div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">1</span>Connect to Firebase</div>
+      <p class="hint">Same project as your Android app. Paste the web config from Firebase console → Project settings.</p>
+      <textarea id="fbConfigInput" rows="4" placeholder="{ apiKey: '...', projectId: '...', ... }"></textarea>
+      <button class="primary" id="connectBtn" style="margin-top:8px;">Connect</button>
+      <p class="status-line" id="fbStatus">Not connected.</p>
+    </div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">2</span>Floor plan</div>
+      <label class="file-btn" for="planInput">Upload floor plan image</label>
+      <input type="file" id="planInput" accept="image/*">
+      <label style="margin-top:8px; display:block;">Map name
+        <input type="text" id="mapNameInput" placeholder="e.g. my-house">
+      </label>
+      <div class="row" style="display:flex; gap:6px; margin-top:8px;">
+        <button class="ghost" id="saveMapBtn">Save map</button>
+        <button class="ghost" id="loadMapBtn">Load map</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">3</span>Phone's device ID</div>
+      <p class="hint">Shown on the Android app's home screen ("Device ID: ...").</p>
+      <input type="text" id="deviceIdInput" placeholder="paste device ID here">
+    </div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">4</span>Mode</div>
+      <div class="mode-toggle">
+        <button class="active" id="modeCalibrateBtn">Calibrate</button>
+        <button id="modeTrackBtn">Live Track</button>
+      </div>
+      <p class="hint" id="modeHint" style="margin-top:8px;">Walk to a spot, make sure your phone has sent a recent reading, then tap that spot on the map to save it as a fingerprint.</p>
+    </div>
+
+    <div class="step" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="step-label">Fingerprints (<span id="fpCount">0</span>)</div>
+      <div class="fp-list" id="fpList"><div class="empty-note">None recorded yet.</div></div>
+    </div>
+
+    <div class="step">
+      <button class="ghost" id="clearFpBtn">Clear all fingerprints</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="canvas-wrap" id="canvasWrap">
+      <div class="placeholder" id="placeholder">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M12 20a1 1 0 100-2 1 1 0 000 2z" fill="currentColor" stroke="none"/>
+          <path d="M8.5 15.5a5 5 0 017 0"/><path d="M5 12a10 10 0 0114 0"/>
+        </svg>
+        <div>Connect Firebase and upload a floor plan to begin.</div>
+      </div>
+      <div class="float-box" id="floatBox">
+        <div id="floatBoxContent"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- State ----------
+let img = null, canvas = null, ctx = null;
+let mode = 'calibrate'; // 'calibrate' | 'track'
+let fingerprints = []; // {id, x, y (0-1 normalized), label, signals: {bssid: rssi}}
+let db = null, fbConnected = false;
+let trackTimer = null;
+let smoothedPos = null; // {x, y} in normalized coords, after Kalman filtering
+let lastEstimate = null; // {x, y, radius} raw k-NN estimate before smoothing
+
+const planInput = document.getElementById('planInput');
+const canvasWrap = document.getElementById('canvasWrap');
+const placeholder = document.getElementById('placeholder');
+const fbConfigInput = document.getElementById('fbConfigInput');
+const connectBtn = document.getElementById('connectBtn');
+const fbStatus = document.getElementById('fbStatus');
+const mapNameInput = document.getElementById('mapNameInput');
+const saveMapBtn = document.getElementById('saveMapBtn');
+const loadMapBtn = document.getElementById('loadMapBtn');
+const deviceIdInput = document.getElementById('deviceIdInput');
+const modeCalibrateBtn = document.getElementById('modeCalibrateBtn');
+const modeTrackBtn = document.getElementById('modeTrackBtn');
+const modeHint = document.getElementById('modeHint');
+const fpList = document.getElementById('fpList');
+const fpCount = document.getElementById('fpCount');
+const clearFpBtn = document.getElementById('clearFpBtn');
+const floatBox = document.getElementById('floatBox');
+const floatBoxContent = document.getElementById('floatBoxContent');
+
+// ---------- Firebase connect ----------
+connectBtn.addEventListener('click', () => {
+  let config;
+  try {
+    config = new Function('return (' + fbConfigInput.value + ')')();
+  } catch (e) {
+    fbStatus.textContent = 'Could not read that config — paste it exactly as copied from Firebase.';
+    fbStatus.className = 'status-line bad';
+    return;
+  }
+  try {
+    firebase.initializeApp(config);
+    db = firebase.firestore();
+    fbConnected = true;
+    fbStatus.textContent = 'Connected.';
+    fbStatus.className = 'status-line good';
+  } catch (e) {
+    fbStatus.textContent = 'Connection failed: ' + e.message;
+    fbStatus.className = 'status-line bad';
+  }
+});
+
+// ---------- Floor plan ----------
+planInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    img = new Image();
+    img.onload = setupCanvas;
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function setupCanvas() {
+  placeholder.style.display = 'none';
+  if (canvas) canvas.remove();
+  canvas = document.createElement('canvas');
+  const isMobile = window.innerWidth <= 860;
+  const availW = isMobile ? window.innerWidth - 40 : window.innerWidth - 320 - 80;
+  const availH = window.innerHeight - (isMobile ? 260 : 70);
+  const scale = Math.min(1.6, Math.min(availW, 1300) / img.width, Math.max(300, availH) / img.height);
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+  canvas.className = mode === 'calibrate' ? 'mode-calibrate' : '';
+  canvasWrap.insertBefore(canvas, canvasWrap.firstChild);
+  ctx = canvas.getContext('2d');
+  addLegend();
+  canvas.addEventListener('click', onCanvasClick);
+  render();
+}
+window.addEventListener('resize', () => { if (img) setupCanvas(); });
+
+function addLegend() {
+  if (document.querySelector('.legend')) return;
+  const legend = document.createElement('div');
+  legend.className = 'legend';
+  legend.innerHTML = `
+    <div>LEGEND</div>
+    <div class="legend-item"><span class="sw" style="background:#4fd1c5;"></span>Recorded fingerprint</div>
+    <div class="legend-item"><span class="sw" style="background:#ffd93d;"></span>Estimated live position</div>
+  `;
+  canvasWrap.appendChild(legend);
+}
+
+// ---------- Mode switching ----------
+modeCalibrateBtn.addEventListener('click', () => setMode('calibrate'));
+modeTrackBtn.addEventListener('click', () => setMode('track'));
+
+function setMode(m) {
+  mode = m;
+  modeCalibrateBtn.classList.toggle('active', m === 'calibrate');
+  modeTrackBtn.classList.toggle('active', m === 'track');
+  if (canvas) canvas.className = m === 'calibrate' ? 'mode-calibrate' : '';
+  modeHint.textContent = m === 'calibrate'
+    ? 'Walk to a spot, make sure your phone has sent a recent reading, then tap that spot on the map to save it as a fingerprint.'
+    : 'Tap "Start" below — the dot will move to your estimated position based on live readings from your phone.';
+  if (m === 'track') startTracking(); else stopTracking();
+  render();
+}
+
+// ---------- Calibration: tap map, pull phone's current live reading, save as fingerprint ----------
+function onCanvasClick(e) {
+  if (mode !== 'calibrate') return;
+  if (!fbConnected) { alert('Connect to Firebase first.'); return; }
+  const deviceId = deviceIdInput.value.trim();
+  if (!deviceId) { alert("Enter the phone's device ID first (shown on the Android app)."); return; }
+
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const nx = x / canvas.width, ny = y / canvas.height;
+
+  showFloatBox(x, y, `<p style="font-size:12px;color:var(--dim);margin:0;">Fetching phone's latest reading...</p>`);
+
+  db.collection('liveReadings').doc(deviceId).get().then(doc => {
+    if (!doc.exists) {
+      showFloatBox(x, y, `<p style="font-size:12px;color:var(--danger);margin:0;">No reading found yet for this device. Make sure the Android app is running and has scanned at least once (can take ~20-30s).</p>
+        <button class="ghost" id="floatCancel">Close</button>`);
+      wireFloatCancel();
+      return;
+    }
+    const data = doc.data();
+    const ageSec = (Date.now() - data.timestamp) / 1000;
+    const staleWarning = ageSec > 60 ? `<p style="font-size:11px;color:var(--warn);margin:4px 0 0 0;">Reading is ${Math.round(ageSec)}s old — walk-and-tap quickly for best accuracy.</p>` : '';
+    showFloatBox(x, y, `
+      <label>Label this spot</label>
+      <input type="text" id="fpLabelInput" placeholder="e.g. Kitchen corner" style="margin-top:4px;">
+      ${staleWarning}
+      <div class="row" style="margin-top:6px;">
+        <button class="primary" id="fpSaveBtn">Save fingerprint</button>
+        <button class="ghost" id="floatCancel">Cancel</button>
+      </div>
+    `);
+    document.getElementById('fpSaveBtn').addEventListener('click', () => {
+      const label = document.getElementById('fpLabelInput').value.trim() || `Point ${fingerprints.length + 1}`;
+      fingerprints.push({ id: Date.now(), x: nx, y: ny, label, signals: data.signals || {} });
+      updateFpList();
+      hideFloatBox();
+      render();
+    });
+    wireFloatCancel();
+  }).catch(err => {
+    showFloatBox(x, y, `<p style="font-size:12px;color:var(--danger);margin:0;">Error reading Firestore: ${err.message}</p><button class="ghost" id="floatCancel">Close</button>`);
+    wireFloatCancel();
+  });
+}
+
+function wireFloatCancel() {
+  const btn = document.getElementById('floatCancel');
+  if (btn) btn.addEventListener('click', hideFloatBox);
+}
+
+function showFloatBox(x, y, html) {
+  floatBoxContent.innerHTML = html;
+  const w = 240, h = 140;
+  floatBox.style.left = Math.min(Math.max(x + 12, 4), canvas.width - w - 4) + 'px';
+  floatBox.style.top = Math.min(Math.max(y + 12, 4), canvas.height - h - 4) + 'px';
+  floatBox.classList.add('active');
+}
+function hideFloatBox() { floatBox.classList.remove('active'); }
+
+function updateFpList() {
+  fpCount.textContent = fingerprints.length;
+  if (!fingerprints.length) { fpList.innerHTML = '<div class="empty-note">None recorded yet.</div>'; return; }
+  fpList.innerHTML = '';
+  fingerprints.slice().reverse().forEach(fp => {
+    const row = document.createElement('div');
+    row.className = 'fp-row';
+    row.innerHTML = `<span>${fp.label}</span><button class="rm" data-id="${fp.id}">&times;</button>`;
+    fpList.appendChild(row);
+  });
+  fpList.querySelectorAll('.rm').forEach(btn => {
+    btn.addEventListener('click', () => {
+      fingerprints = fingerprints.filter(f => f.id !== parseInt(btn.dataset.id));
+      updateFpList(); render();
+    });
+  });
+}
+clearFpBtn.addEventListener('click', () => { fingerprints = []; updateFpList(); render(); });
+
+// ---------- Save/load maps ----------
+saveMapBtn.addEventListener('click', () => {
+  if (!fbConnected) { alert('Connect to Firebase first.'); return; }
+  const name = mapNameInput.value.trim();
+  if (!name || !img) { alert('Enter a map name and upload a floor plan first.'); return; }
+  db.collection('houseMaps').doc(name).set({
+    image: img.src,
+    fingerprints,
+    savedAt: Date.now()
+  }).then(() => alert(`Saved map "${name}".`)).catch(e => alert('Save failed: ' + e.message));
+});
+
+loadMapBtn.addEventListener('click', () => {
+  if (!fbConnected) { alert('Connect to Firebase first.'); return; }
+  const name = mapNameInput.value.trim();
+  if (!name) { alert('Enter the map name to load.'); return; }
+  db.collection('houseMaps').doc(name).get().then(doc => {
+    if (!doc.exists) { alert('No map found with that name.'); return; }
+    const data = doc.data();
+    fingerprints = data.fingerprints || [];
+    img = new Image();
+    img.onload = () => { setupCanvas(); updateFpList(); };
+    img.src = data.image;
+  }).catch(e => alert('Load failed: ' + e.message));
+});
+
+// ---------- k-NN fingerprint matching ----------
+function signalDistance(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let sumSq = 0;
+  keys.forEach(k => {
+    const va = a[k] !== undefined ? a[k] : -100; // floor for "not seen"
+    const vb = b[k] !== undefined ? b[k] : -100;
+    sumSq += (va - vb) ** 2;
+  });
+  return Math.sqrt(sumSq / Math.max(1, keys.size));
+}
+
+function estimatePosition(liveSignals) {
+  if (!fingerprints.length) return null;
+  const withDist = fingerprints.map(fp => ({ fp, dist: signalDistance(liveSignals, fp.signals) }));
+  withDist.sort((a, b) => a.dist - b.dist);
+  const k = Math.min(3, withDist.length);
+  const top = withDist.slice(0, k);
+  let sumW = 0, sumX = 0, sumY = 0;
+  top.forEach(({ fp, dist }) => {
+    const w = 1 / (dist + 1); // +1 avoids divide-by-zero for an exact match
+    sumW += w; sumX += w * fp.x; sumY += w * fp.y;
+  });
+  const avgDist = top.reduce((s, t) => s + t.dist, 0) / top.length;
+  // Heuristic confidence radius: larger signal-space distance = less confident.
+  // Not a rigorous statistical bound — a practical indicator of match quality.
+  const radiusNorm = Math.min(0.35, 0.03 + avgDist * 0.01);
+  return { x: sumX / sumW, y: sumY / sumW, radiusNorm };
+}
+
+// ---------- Kalman filter (simple scalar, applied per axis) ----------
+function makeKalman(q = 0.001, r = 0.05) {
+  let x = null, p = 1;
+  return function update(measurement) {
+    if (x === null) { x = measurement; return x; }
+    p += q;
+    const k = p / (p + r);
+    x = x + k * (measurement - x);
+    p = (1 - k) * p;
+    return x;
+  };
+}
+let kalmanX = makeKalman();
+let kalmanY = makeKalman();
+
+// ---------- Live tracking ----------
+function startTracking() {
+  if (!fbConnected) { modeHint.textContent = 'Connect to Firebase first.'; return; }
+  const deviceId = deviceIdInput.value.trim();
+  if (!deviceId) { modeHint.textContent = "Enter the phone's device ID first."; return; }
+  if (!fingerprints.length) { modeHint.textContent = 'Record at least a few fingerprints in Calibrate mode first.'; return; }
+  kalmanX = makeKalman(); kalmanY = makeKalman();
+  pollLive();
+  trackTimer = setInterval(pollLive, 4000);
+}
+function stopTracking() {
+  if (trackTimer) clearInterval(trackTimer);
+  trackTimer = null;
+}
+function pollLive() {
+  const deviceId = deviceIdInput.value.trim();
+  if (!deviceId || !db) return;
+  db.collection('liveReadings').doc(deviceId).get().then(doc => {
+    if (!doc.exists) return;
+    const data = doc.data();
+    const est = estimatePosition(data.signals || {});
+    if (!est) return;
+    lastEstimate = est;
+    smoothedPos = { x: kalmanX(est.x), y: kalmanY(est.y) };
+    render();
+  }).catch(() => { /* transient — will retry on next poll */ });
+}
+
+// ---------- Render ----------
+function render() {
+  if (!canvas) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  // fingerprint markers
+  fingerprints.forEach(fp => {
+    const x = fp.x * canvas.width, y = fp.y * canvas.height;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#4fd1c5'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#0a0e13'; ctx.stroke();
+  });
+
+  // live estimated position + confidence circle
+  if (mode === 'track' && smoothedPos) {
+    const x = smoothedPos.x * canvas.width, y = smoothedPos.y * canvas.height;
+    const radiusPx = (lastEstimate ? lastEstimate.radiusNorm : 0.08) * Math.max(canvas.width, canvas.height);
+    ctx.beginPath(); ctx.arc(x, y, radiusPx, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,217,61,0.15)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,217,61,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffd93d'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#0a0e13'; ctx.stroke();
+  }
+}
+</script>
+</body>
+</html>
