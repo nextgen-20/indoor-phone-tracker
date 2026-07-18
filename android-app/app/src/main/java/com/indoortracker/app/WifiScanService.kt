@@ -137,11 +137,30 @@ class WifiScanService : Service() {
             .build()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    private var receiverRegistered = false
+
+override fun onCreate() {
+    super.onCreate()
+
+    wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+    registerReceiver(
+        scanReceiver,
+        IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+    )
+    receiverRegistered = true
+
+    startForeground(NOTIFICATION_ID, buildNotification("Scanning WiFi signal..."))
+    startScanLoop()
+}
+
+override fun onDestroy() {
+    if (receiverRegistered) {
         unregisterReceiver(scanReceiver)
-        scope.cancel()
     }
+    scope.cancel()
+    super.onDestroy()
+}
 
     override fun onBind(intent: Intent?): IBinder? = null
 
