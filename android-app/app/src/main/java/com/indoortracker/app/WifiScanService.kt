@@ -34,7 +34,11 @@ class WifiScanService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private lateinit var wifiManager: WifiManager
-    private val db = FirebaseFirestore.getInstance()
+    // Firestore is only initialized when FIRESTORE_ENABLED is true at build time.
+    // When false, uploads are skipped and scan results are reported via broadcasts only.
+    private val db: FirebaseFirestore? by lazy {
+        if (BuildConfig.FIRESTORE_ENABLED) FirebaseFirestore.getInstance() else null
+    }
 
     private val deviceId: String by lazy {
         val prefs = getSharedPreferences("tracker_prefs", MODE_PRIVATE)
@@ -140,35 +144,53 @@ class WifiScanService : Service() {
             reading["label"] = calibrationLabel!!
             reading["x"] = calibrationX!!
             reading["y"] = calibrationY!!
-            db.collection("fingerprints")
-                .add(reading)
-                .addOnSuccessListener {
-                    sendStatusBroadcast(
-                        STATUS_FINGERPRINT_SAVED,
-                        "Saved fingerprint '${calibrationLabel}' at (${calibrationX}, ${calibrationY})."
-                    )
-                }
-                .addOnFailureListener { e ->
-                    sendStatusBroadcast(STATUS_FIRESTORE_ERROR, "Firestore write failed: ${e.message}")
-                }
+            if (BuildConfig.FIRESTORE_ENABLED && db != null) {
+                db!!.collection("fingerprints")
+                    .add(reading)
+                    .addOnSuccessListener {
+                        sendStatusBroadcast(
+                            STATUS_FINGERPRINT_SAVED,
+                            "Saved fingerprint '${calibrationLabel}' at (${calibrationX}, ${calibrationY})."
+                        )
+                    }
+                    .addOnFailureListener { e ->
+                        sendStatusBroadcast(STATUS_FIRESTORE_ERROR, "Firestore write failed: ${e.message}")
+                    }
+            } else {
+                sendStatusBroadcast(
+                    STATUS_FINGERPRINT_SAVED,
+                    "Fingerprint captured locally (${results.size} networks) — cloud upload disabled in this build."
+                )
+            }
             mode = MODE_LIVE
             calibrationLabel = null
             calibrationX = null
             calibrationY = null
             startForegroundCompat("Fingerprint saved — back to live scanning.")
         } else {
-            db.collection("liveReadings").document(deviceId)
-                .set(reading)
-                .addOnSuccessListener {
-                    sendStatusBroadcast(
-                        STATUS_LIVE_UPLOADED,
-                        "Live reading uploaded: ${results.size} networks${if (freshScan) " (fresh)" else " (cached)"}."
-                    )
-                }
-                .addOnFailureListener { e ->
-                    sendStatusBroadcast(STATUS_FIRESTORE_ERROR, "Firestore write failed: ${e.message}")
-                }
+            if (BuildConfig.FIRESTORE_ENABLED && db != null) {
+                db!!.collection("liveReadings").document(deviceId)
+                    .set(reading)
+                    .addOnSuccessListener {
+                        sendStatusBroadcast(
+                            STATUS_LIVE_UPLOADED,
+                            "Live reading uploaded: ${results.size} networks${if (freshScan) " (fresh)" else " (cached)"}."
+                        )
+                    }
+                    .addOnFailureListener { e ->
+                        sendStatusBroadcast(STATUS_FIRESTORE_ERROR, "Firestore write failed: ${e.message}")
+                    }
+            } else {
+                sendStatusBroadcast(
+                    STATUS_LIVE_UPLOADED,
+                    "Live scan captured: ${results.size} networks${if (freshScan) " (fresh)" else " (cached)"} — cloud upload disabled in this build."
+                )
+            }
         }
+    }
+
+    private val notificationManager: NotificationManager by lazy {
+        getSystemService(NotificationManager::class.java)
     }
 
     private fun updateNotificationForLatestScan() {
@@ -177,7 +199,7 @@ class WifiScanService : Service() {
         } else {
             "Scanning WiFi signal…"
         }
-        notify(NOTIFICATION_ID, buildNotification(text))
+        notificationManager.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     private fun ageSeconds(ts: Long): Long = if (ts == 0L) 0 else (System.currentTimeMillis() - ts) / 1000

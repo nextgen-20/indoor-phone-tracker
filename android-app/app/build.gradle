@@ -14,6 +14,11 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+        // Temporarily disabled to allow building an APK without the Firebase
+        // google-services.json in place. Firestore writes are guarded by this
+        // flag at call sites. Set to true and provide google-services.json to
+        // re-enable cloud upload. The Firebase implementation is not removed.
+        buildConfigField "boolean", "FIRESTORE_ENABLED", "false"
     }
 
     buildTypes {
@@ -27,9 +32,16 @@ android {
     }
     kotlinOptions {
         jvmTarget = '17'
+        freeCompilerArgs = ['-Xjsr305=strict']
     }
     buildFeatures {
         viewBinding true
+        buildConfig true
+    }
+    packaging {
+        resources {
+            excludes += ['META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties', 'META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt']
+        }
     }
 }
 
@@ -40,9 +52,12 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.lifecycle:lifecycle-service:2.8.4'
 
-    // Firestore, for uploading readings + fingerprints
-    implementation platform('com.google.firebase:firebase-bom:33.1.2')
-    implementation 'com.google.firebase:firebase-firestore-ktx'
+    // Firestore, for uploading readings + fingerprints. compileOnly so the
+    // Firebase dex payload is not merged in when FIRESTORE_ENABLED=false — it
+    // is ~30MB of transitive deps (gRPC/protobuf) that OOMs this build host.
+    // When re-enabling, change these two lines back to `implementation`.
+    compileOnly platform('com.google.firebase:firebase-bom:33.1.2')
+    compileOnly 'com.google.firebase:firebase-firestore-ktx'
 
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 }

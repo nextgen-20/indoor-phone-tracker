@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.deviceIdText.text = "Device ID: ${getDeviceId()}\n(enter this on the web dashboard to find this phone)"
+        binding.deviceIdText.text = "Device ID: ${loadDeviceId()}\n(enter this on the web dashboard to find this phone)"
 
         binding.startLiveButton.setOnClickListener {
             ensurePreconditionsThenRun { startScanService(WifiScanService.MODE_LIVE) }
@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getDeviceId(): String {
+    private fun loadDeviceId(): String {
         val prefs = getSharedPreferences("tracker_prefs", MODE_PRIVATE)
         return prefs.getString("device_id", null) ?: run {
             val id = java.util.UUID.randomUUID().toString()

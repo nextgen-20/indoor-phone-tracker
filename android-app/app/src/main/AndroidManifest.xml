@@ -30,7 +30,7 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:drawable/ic_menu_mylocation"
         android:label="Indoor Phone Tracker"
         android:theme="@style/Theme.IndoorTracker"
         android:usesCleartextTraffic="false">
